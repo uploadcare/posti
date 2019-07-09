@@ -92,9 +92,10 @@ class TestGetReader(TestCase):
 
         with stdchannel_redirected(sys.stderr, os.devnull):
             with get_reader(writer) as rfile:
-                self.assertEquals(rfile.read(10), b'test')
-                # Wait until second thread print exception
-                sleep(0.02)
+                with self.assertRaises(ValueError):
+                    rfile.read(10)
+            # Wait until second thread print exception
+            sleep(0.02)
 
     def test_text_mode(self):
         def writer(wfile):
@@ -162,8 +163,9 @@ class TestIterator(TestCase):
             raise ValueError()
 
         with stdchannel_redirected(sys.stderr, os.devnull):
-            for chunk in iterator(writer):
-                self.assertEquals(chunk, b'test')
+            with self.assertRaises(ValueError):
+                for chunk in iterator(writer, chunk_size=2):
+                    self.assertFalse(True)
             # Wait until second thread print exception
             sleep(0.02)
 

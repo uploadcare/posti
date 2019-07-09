@@ -6,7 +6,7 @@ from contextlib import contextmanager
 __all__ = ['get_reader', 'iterator', 'lines_iterator']
 
 
-class _SilentFileWrapper(object):
+class _ChattyFileWrapper(object):
     """Fd's returned by os.pipe() are not seakable and also don't support
     .tell() method while some APIs (like tarfile.open()) use it.
     """
@@ -26,10 +26,41 @@ class _SilentFileWrapper(object):
         return getattr(self._silent_file, attr)
 
 
-def run_writer(wpipe, binary, writer):
+class _HystericalFileWrapper(object):
+    def __init__(self, calm_file):
+        self._calm_file = calm_file
+        self._exception = None
+
+    def read(self, _n=-1):
+        r = self._calm_file.read(_n)
+        if self._exception is not None:
+            raise self._exception
+        return r
+
+    def readline(self, _n=-1):
+        r = self._calm_file.readline(_n)
+        if self._exception is not None:
+            raise self._exception
+        return r
+
+    def readlines(self, _h=-1):
+        r = self._calm_file.readline(_h)
+        if self._exception is not None:
+            raise self._exception
+        return r
+
+    def __getattr__(self, attr):
+        return getattr(self._calm_file, attr)
+
+
+def run_writer(writer, wpipe, binary, set_exception):
     # File should always be closed after writing
     with os.fdopen(wpipe, 'wb' if binary else 'w') as wfile:
-        writer(_SilentFileWrapper(wfile))
+        try:
+            writer(_ChattyFileWrapper(wfile))
+        except Exception as e:
+            set_exception(e)
+            raise
 
 
 @contextmanager
@@ -41,8 +72,13 @@ def get_reader(writer, binary=True, wait_writer=False):
     """
     rpipe, wpipe = os.pipe()
     rfile = os.fdopen(rpipe, 'rb' if binary else 'r')
+    rfile = _HystericalFileWrapper(rfile)
+
+    def set_ex(exception):
+        rfile._exception = exception
+
     try:
-        p = Thread(target=run_writer, args=(wpipe, binary, writer))
+        p = Thread(target=run_writer, args=(writer, wpipe, binary, set_ex))
         p.start()
 
         yield rfile
