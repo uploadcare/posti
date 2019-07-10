@@ -6,6 +6,9 @@ from time import sleep
 from unittest import TestCase
 from contextlib import contextmanager
 
+import tarfile
+import zipfile
+
 from .posti import get_reader, iterator, lines_iterator
 
 
@@ -186,3 +189,27 @@ class TestLinesIterator(TestCase):
 
         for chunk in lines_iterator(writer):
             self.assertEquals(chunk, 'test\n')
+
+
+class TestRealworldWriters(TestCase):
+    def test_tarfile(self):
+        def writer(wfile):
+            with tarfile.open(mode='w', fileobj=wfile) as tar:
+                tar.add('.')
+
+        l = 0
+        for chunk in iterator(writer):
+            l += len(chunk)
+        self.assertGreater(l, 65536)
+
+    def test_zipfile(self):
+        def writer(wfile):
+            payload = b'1234567890' * 1024  # 10k
+            with zipfile.ZipFile(wfile, mode='w') as zip:
+                for i in range(10):
+                    zip.writestr('file{}'.format(i), payload)
+
+        l = 0
+        for chunk in iterator(writer):
+            l += len(chunk)
+        self.assertGreater(l, 65536)
